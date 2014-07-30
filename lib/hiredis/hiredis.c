@@ -446,10 +446,10 @@ static int processMultiBulkItem(redisReader *r) {
     long elements;
     int root = 0;
 
-    /* Set error for nested multi bulks with depth > 1 */
-    if (r->ridx == 2) {
+    /* Set error for nested multi bulks with depth > 7 */
+    if (r->ridx == 8) {
         __redisReaderSetError(r,REDIS_ERR_PROTOCOL,
-            "No support for nested multi bulk replies with depth > 1");
+            "No support for nested multi bulk replies with depth > 7");
         return REDIS_ERR;
     }
 
@@ -564,6 +564,7 @@ redisReader *redisReaderCreate(void) {
     r->errstr[0] = '\0';
     r->fn = &defaultFunctions;
     r->buf = sdsempty();
+    r->maxbuf = REDIS_READER_MAX_BUF;
     if (r->buf == NULL) {
         free(r);
         return NULL;
@@ -591,7 +592,7 @@ int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
     /* Copy the provided buffer. */
     if (buf != NULL && len >= 1) {
         /* Destroy internal buffer when it is empty and is quite large. */
-        if (r->len == 0 && sdsavail(r->buf) > 16*1024) {
+        if (r->len == 0 && r->maxbuf != 0 && sdsavail(r->buf) > r->maxbuf) {
             sdsfree(r->buf);
             r->buf = sdsempty();
             r->pos = 0;
@@ -749,6 +750,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
             default:
                 /* Try to detect printf format */
                 {
+                    static const char intfmts[] = "diouxX";
                     char _format[16];
                     const char *_p = c+1;
                     size_t _l = 0;
@@ -774,7 +776,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     va_copy(_cpy,ap);
 
                     /* Integer conversion (without modifiers) */
-                    if (strchr("diouxX",*_p) != NULL) {
+                    if (strchr(intfmts,*_p) != NULL) {
                         va_arg(ap,int);
                         goto fmt_valid;
                     }
@@ -788,7 +790,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     /* Size: char */
                     if (_p[0] == 'h' && _p[1] == 'h') {
                         _p += 2;
-                        if (*_p != '\0' && strchr("diouxX",*_p) != NULL) {
+                        if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
                             va_arg(ap,int); /* char gets promoted to int */
                             goto fmt_valid;
                         }
@@ -798,7 +800,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     /* Size: short */
                     if (_p[0] == 'h') {
                         _p += 1;
-                        if (*_p != '\0' && strchr("diouxX",*_p) != NULL) {
+                        if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
                             va_arg(ap,int); /* short gets promoted to int */
                             goto fmt_valid;
                         }
@@ -808,7 +810,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     /* Size: long long */
                     if (_p[0] == 'l' && _p[1] == 'l') {
                         _p += 2;
-                        if (*_p != '\0' && strchr("diouxX",*_p) != NULL) {
+                        if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
                             va_arg(ap,long long);
                             goto fmt_valid;
                         }
@@ -818,7 +820,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     /* Size: long */
                     if (_p[0] == 'l') {
                         _p += 1;
-                        if (*_p != '\0' && strchr("diouxX",*_p) != NULL) {
+                        if (*_p != '\0' && strchr(intfmts,*_p) != NULL) {
                             va_arg(ap,long);
                             goto fmt_valid;
                         }
@@ -1066,7 +1068,7 @@ int redisSetTimeout(redisContext *c, struct timeval tv) {
  * After this function is called, you may use redisContextReadReply to
  * see if there is a reply available. */
 int redisBufferRead(redisContext *c) {
-    char buf[2048];
+    char buf[1024*16];
     int nread;
 
     /* Return early when the context has seen an error. */
@@ -1097,10 +1099,10 @@ int redisBufferRead(redisContext *c) {
  *
  * Returns REDIS_OK when the buffer is empty, or (a part of) the buffer was
  * succesfully written to the socket. When the buffer is empty after the
- * write operation, "wdone" is set to 1 (if given).
+ * write operation, "done" is set to 1 (if given).
  *
  * Returns REDIS_ERR if an error occured trying to write and sets
- * c->error to hold the appropriate error string.
+ * c->errstr to hold the appropriate error string.
  */
 int redisBufferWrite(redisContext *c, int *done) {
     int nwritten;

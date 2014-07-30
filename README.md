@@ -6,7 +6,7 @@ See the copyright information in the file named `COPYRIGHT`.
 Status of the project
 ---------------------
 
-The lua-hiredis module is pretty stable. It is heavily used in production 
+The lua-hiredis module is pretty stable. It is heavily used in production
 under high load by the author and team. There are still some things to do
 (see TODO file) in the feature completeness field, this is why the module
 is not 1.0 yet. But all the features necessary for regular usage are here.
@@ -50,12 +50,19 @@ Hiredis error codes (see docs), also available as `hiredis.ERR_<something>`:
   with type `hiredis.REPLY_STATUS`.
   Common status objects are available in hiredis module table:
 
-  * `hiredis.OK`
-  * `hiredis.QUEUED`
-  * `hiredis.PONG`
+  * `hiredis.status.OK`
+  * `hiredis.status.QUEUED`
+  * `hiredis.status.PONG`
 
   It is guaranteed that these object instances are always used
   for their corresponding statuses (so you can make a simple equality check).
+  The same is true for any other object in `hiredis.status` table.
+
+  Examples:
+
+        assert(conn:command("PING") == hiredis.status.PONG)
+        assert(conn:command("SET", "NAME", "lua-hiredis") == hiredis.status.OK)
+        assert(conn:command("TYPE", "NAME") == hiredis.status.string)
 
 * `REDIS_REPLY_ERROR` is a const-object with type `hiredis.REPLY_ERROR`.
   Note that Redis server errors are returned as `REDIS_REPLY_ERROR` values,
@@ -83,6 +90,19 @@ Use `hiredis.unwrap_reply()` to convert const-object to regular Lua value.
 
 Note: Unwrapping is not done automatically to make array reply handling
 more straightforward.
+
+Deprecated features
+-------------------
+
+For backwards compatibility following status const-objects are aliased
+in the `hiredis` module table:
+
+  * `hiredis.OK = hiredis.status.OK`
+  * `hiredis.QUEUED = hiredis.status.QUEUED`
+  * `hiredis.PONG = hiredis.status.PONG`
+
+These aliases will eventually be removed in one of future releases,
+so, please, update your code to use `hiredis.status.*` instead.
 
 More information
 ----------------
